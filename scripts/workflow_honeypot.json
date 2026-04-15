@@ -1,0 +1,335 @@
+{
+  "name": "Honeypot",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        -48
+      ],
+      "id": "a1dd566c-b3ab-4a02-a3f4-3decb3b9fb74",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/home/node/.n8n-files/logs/cowrie.json",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        -240,
+        -48
+      ],
+      "id": "98da7911-6a90-47be-bb40-e62e7458fb8d",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Extraemos el archivo binario\nconst binaryData = await this.helpers.getBinaryDataBuffer(0, 'data');\n\n// 2. Lo convertimos a texto plano\nconst rawText = binaryData.toString('utf8');\n\n// 3. Separamos el texto por saltos de línea\nconst lines = rawText.split('\\n');\nlet items = [];\n\n// 4. Recorremos cada línea y la transformamos en JSON\nfor (let line of lines) {\n  if (line.trim() !== \"\") {\n    try {\n      let parsedJson = JSON.parse(line);\n      items.push({ json: parsedJson });\n    } catch (e) {\n      // Ignoramos líneas rotas o vacías\n    }\n  }\n}\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        -48
+      ],
+      "id": "3b4e7963-4096-464b-810c-d15f5f5e9450",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "65d15057-3d12-49f3-8919-4c550044559f",
+              "leftValue": "={{ $json.eventid }}",
+              "rightValue": "=cowrie",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        160,
+        -48
+      ],
+      "id": "c37d88c8-2d07-4c9a-b6b3-32e05921138b",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "eventos",
+          "mode": "list",
+          "cachedResultName": "eventos"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "src_ip": "={{ $json.src_ip }}",
+            "username": "={{ $json.username }}",
+            "session": "={{ $json.session }}",
+            "client_version": "={{ $json.version }}",
+            "hash": "={{ $json.hassh }}",
+            "command": "={{ $json.input }}",
+            "password": "={{ $json.password }}",
+            "timestamp": "={{ new Date($json.timestamp) }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "src_ip",
+              "displayName": "src_ip",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "username",
+              "displayName": "username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "password",
+              "displayName": "password",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "command",
+              "displayName": "command",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "hash",
+              "displayName": "hash",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "client_version",
+              "displayName": "client_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "session",
+              "displayName": "session",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        400,
+        -160
+      ],
+      "id": "077621bd-a336-4285-8116-b8c056828bb0",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "Au9jxzkldzBuReA7",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "indexId": "eventos_honeypot",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "timestamp",
+              "fieldValue": "={{ $json.timestamp }}"
+            },
+            {
+              "fieldId": "src_ip",
+              "fieldValue": "={{ $json.src_ip }}"
+            },
+            {
+              "fieldId": "username",
+              "fieldValue": "={{ $json.username }}"
+            },
+            {
+              "fieldId": "password",
+              "fieldValue": "={{ $json.password }}"
+            },
+            {
+              "fieldId": "command",
+              "fieldValue": "={{ $json.input }}"
+            },
+            {
+              "fieldId": "session",
+              "fieldValue": "={{ $json.session }}"
+            },
+            {
+              "fieldId": "client_version",
+              "fieldValue": "={{ $json.version }}"
+            },
+            {
+              "fieldId": "hash",
+              "fieldValue": "={{ $json.shasum }}"
+            }
+          ]
+        },
+        "additionalFields": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.elasticsearch",
+      "typeVersion": 1,
+      "position": [
+        400,
+        64
+      ],
+      "id": "146ce000-898e-420e-baf3-fcdf60f5b9f5",
+      "name": "Create a document",
+      "credentials": {
+        "elasticsearchApi": {
+          "id": "NtaFVZ5RpxRV31dm",
+          "name": "Elasticsearch account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create a document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "524f52f9-a074-4657-90d1-82b738804e3c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c539f1aafa71e0435f65d533ba3eaafdeac7d823b436dbcfc9b805eaf369c7df"
+  },
+  "id": "7LzvibnhzrIDJoRH",
+  "tags": []
+}
