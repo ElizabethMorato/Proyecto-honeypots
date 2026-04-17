@@ -1,8 +1,11 @@
 services:
   cowrie:
     image: cowrie/cowrie
+    container_name: friendly_kalam
     ports:
       - "2222:2222"
+    volumes:
+      - C:\Proyecto-honeypots\logs:/cowrie/cowrie-git/var/log/cowrie
 
   postgres:
     image: postgres

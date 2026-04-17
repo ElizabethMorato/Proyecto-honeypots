@@ -7,7 +7,7 @@
       "typeVersion": 1,
       "position": [
         -448,
-        -48
+        848
       ],
       "id": "a1dd566c-b3ab-4a02-a3f4-3decb3b9fb74",
       "name": "When clicking ‘Execute workflow’"
@@ -20,7 +20,7 @@
       "type": "n8n-nodes-base.readWriteFile",
       "typeVersion": 1.1,
       "position": [
-        -240,
+        -432,
         -48
       ],
       "id": "98da7911-6a90-47be-bb40-e62e7458fb8d",
@@ -28,12 +28,12 @@
     },
     {
       "parameters": {
-        "jsCode": "// 1. Extraemos el archivo binario\nconst binaryData = await this.helpers.getBinaryDataBuffer(0, 'data');\n\n// 2. Lo convertimos a texto plano\nconst rawText = binaryData.toString('utf8');\n\n// 3. Separamos el texto por saltos de línea\nconst lines = rawText.split('\\n');\nlet items = [];\n\n// 4. Recorremos cada línea y la transformamos en JSON\nfor (let line of lines) {\n  if (line.trim() !== \"\") {\n    try {\n      let parsedJson = JSON.parse(line);\n      items.push({ json: parsedJson });\n    } catch (e) {\n      // Ignoramos líneas rotas o vacías\n    }\n  }\n}\n\nreturn items;"
+        "jsCode": "const binaryData = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst rawText = binaryData.toString('utf8');\nconst lines = rawText.split('\\n');\n\nconst lastTimestamp = $getWorkflowStaticData('global').lastTimestamp || '1970-01-01T00:00:00.000Z';\n\nlet newItems = [];\nlet maxTimestamp = lastTimestamp;\n\nfor (let line of lines) {\n  if (line.trim() !== \"\") {\n    try {\n      let parsedJson = JSON.parse(line);\n      if (parsedJson.timestamp && parsedJson.timestamp > lastTimestamp) {\n        newItems.push({ json: parsedJson });\n        if (parsedJson.timestamp > maxTimestamp) {\n          maxTimestamp = parsedJson.timestamp;\n        }\n      }\n    } catch (e) {}\n  }\n}\n\n$getWorkflowStaticData('global').lastTimestamp = maxTimestamp;\n\nreturn newItems;"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -32,
+        -160,
         -48
       ],
       "id": "3b4e7963-4096-464b-810c-d15f5f5e9450",
@@ -66,7 +66,7 @@
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2.3,
       "position": [
-        160,
+        64,
         -48
       ],
       "id": "c37d88c8-2d07-4c9a-b6b3-32e05921138b",
@@ -193,7 +193,7 @@
       "typeVersion": 2.6,
       "position": [
         400,
-        -160
+        -272
       ],
       "id": "077621bd-a336-4285-8116-b8c056828bb0",
       "name": "Insert rows in a table",
@@ -251,7 +251,7 @@
       "typeVersion": 1,
       "position": [
         400,
-        64
+        -48
       ],
       "id": "146ce000-898e-420e-baf3-fcdf60f5b9f5",
       "name": "Create a document",
@@ -261,19 +261,97 @@
           "name": "Elasticsearch account"
         }
       }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -736,
+        -48
+      ],
+      "id": "386080d3-21a1-400b-98df-a1f628f9fdaa",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "chatId": "5107251299",
+        "text": "=🚨 ALERTA DE INTRUSIÓN 🚨\n\nTipo: {{ $json.eventid === 'cowrie.login.success' ? 'LOGIN EXITOSO' : 'DESCARGA DE ARCHIVO' }}\nIP Atacante: {{ $json.src_ip }}\n{{ $json.eventid === 'cowrie.login.success' ? 'Usuario: ' + $json.username + '\\nContraseña: ' + $json.password : 'Hash del archivo: ' + $json.shasum }}\nSesión: {{ $json.session }}\nFecha: {{ new Date($json.timestamp).toLocaleDateString('es-AR', {timeZone: 'America/Argentina/Buenos_Aires'}) }}\nHora: {{ new Date($json.timestamp).toLocaleTimeString('es-AR', {timeZone: 'America/Argentina/Buenos_Aires'}) }}\n\n🤖 Detectado automáticamente por Honeypot OSCORP",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        688,
+        176
+      ],
+      "id": "20b5cc91-8936-49e8-aaf0-842e6023d0f0",
+      "name": "Send a text message",
+      "webhookId": "39ec17ac-cbde-4a0a-94c3-a61f09fd8a24",
+      "credentials": {
+        "telegramApi": {
+          "id": "pdgAjwgF5xsYmE4l",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4b15ad5d-5bc5-438a-9a11-cda794e92e96",
+              "leftValue": "={{ $json.eventid }}",
+              "rightValue": "cowrie.login.success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "052ebb55-a9c3-49df-af5e-6ad76fe063e8",
+              "leftValue": "={{ $json.eventid }}",
+              "rightValue": "cowrie.session.file_download",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        400,
+        176
+      ],
+      "id": "62e53049-0a75-4fae-a3dd-37ee743972e8",
+      "name": "Filtro Atacantes"
     }
   ],
   "pinData": {},
   "connections": {
     "When clicking ‘Execute workflow’": {
       "main": [
-        [
-          {
-            "node": "Read/Write Files from Disk",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Read/Write Files from Disk": {
@@ -310,6 +388,11 @@
             "node": "Create a document",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Filtro Atacantes",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -318,6 +401,28 @@
       "main": [
         []
       ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtro Atacantes": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -325,7 +430,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "524f52f9-a074-4657-90d1-82b738804e3c",
+  "versionId": "0bf07c5e-df1e-4456-8107-e2631a7209fb",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "c539f1aafa71e0435f65d533ba3eaafdeac7d823b436dbcfc9b805eaf369c7df"
