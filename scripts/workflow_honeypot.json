@@ -2,17 +2,6 @@
   "name": "Honeypot",
   "nodes": [
     {
-      "parameters": {},
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [
-        -448,
-        848
-      ],
-      "id": "a1dd566c-b3ab-4a02-a3f4-3decb3b9fb74",
-      "name": "When clicking ‘Execute workflow’"
-    },
-    {
       "parameters": {
         "fileSelector": "/home/node/.n8n-files/logs/cowrie.json",
         "options": {}
@@ -349,11 +338,6 @@
   ],
   "pinData": {},
   "connections": {
-    "When clicking ‘Execute workflow’": {
-      "main": [
-        []
-      ]
-    },
     "Read/Write Files from Disk": {
       "main": [
         [
@@ -425,12 +409,12 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "0bf07c5e-df1e-4456-8107-e2631a7209fb",
+  "versionId": "bfe7746f-a488-4ae5-835d-f058f5f9d43c",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "c539f1aafa71e0435f65d533ba3eaafdeac7d823b436dbcfc9b805eaf369c7df"
